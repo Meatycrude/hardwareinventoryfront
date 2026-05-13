@@ -1,4 +1,3 @@
-
 export interface User {
   id: number;
   name: string;
@@ -39,7 +38,7 @@ export interface Product {
 export interface StockMovement {
   id: number;
   product_id: number;
-  type: 'purchase' | 'sale' | 'adjustment' | 'damage';
+  type: "purchase" | "sale" | "adjustment" | "damage";
   quantity: number;
   reference?: string;
   notes?: string;
