@@ -24,6 +24,7 @@ import Link from "next/link";
 
 const items = [
   { title: "Dashboard", url: "/dashboard", icon: Home },
+  { title: "Products", url: "/products", icon: Package },
   { title: "Categories", url: "/categories", icon: FolderOpen },
   { title: "Suppliers", url: "/suppliers", icon: Users },
   { title: "Stock Movements", url: "/stockmovements", icon: ArrowLeftRight },
@@ -46,7 +47,7 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild tooltip={item.title} className="">
                     <Link
                       href={item.url}
-                      className="flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      className="flex items-center gap-3 px-4 py-6 rounded-lg transition-all text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                     >
                       <item.icon className="h-5 w-5 stroke-[1.75] " />
                       <span className="font-2xl text-black ">{item.title}</span>
