@@ -20,3 +20,21 @@ export async function login(email: string, password: string) {
 
   return response.json();
 }
+
+export async function logout() {
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    return Promise.resolve();
+  }
+
+  await fetch(`${API_URL}/logout`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return Promise.resolve();
+}
