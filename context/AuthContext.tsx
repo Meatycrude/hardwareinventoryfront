@@ -21,6 +21,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [token, setToken] = useState<string | null>(null);
 
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
 
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem("token");
       }
     }
+    setLoading(false);
   }, []);
 
   function loginUser(token: string, user: User) {
@@ -66,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logoutUser,
       }}
     >
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 }
