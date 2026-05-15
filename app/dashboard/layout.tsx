@@ -2,16 +2,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-
-
-export default function Layout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-   
-         <TooltipProvider delayDuration={0}>
+    <TooltipProvider delayDuration={0}>
       <SidebarProvider>
         <AppSidebar />
         <main className="w-full min-h-screen bg-slate-50/50 p-6">
@@ -24,8 +17,6 @@ export default function Layout({
           {children}
         </main>
       </SidebarProvider>
-       </TooltipProvider>
-      
-    
+    </TooltipProvider>
   );
 }
