@@ -42,44 +42,43 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center">
       <div className="space-y-10">
         <div>
-        <h1 className="text-4xl font-bold mb-6">Kaura Hardware Inventory</h1>
-      </div>
-      <div>
-        <form
-          onSubmit={handleSubmit}
-          className="w-full max-w-md space-y-4 border p-6 rounded-lg"
-        >
-          <h1 className="text-2xl text-center font-bold">Login</h1>
-
-          {error && <p className="text-red-500">{error}</p>}
-
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full border p-2 rounded"
-          />
-
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full border p-2 rounded"
-          />
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-black text-white p-2 rounded"
+          <h1 className="text-4xl font-bold mb-6">Kaura Hardware Inventory</h1>
+        </div>
+        <div>
+          <form
+            onSubmit={handleSubmit}
+            className="w-full max-w-md space-y-4 border p-6 rounded-lg"
           >
-            {loading ? "Logging in..." : "Login"}
-          </button>
-        </form>
+            <h1 className="text-2xl text-center font-bold">Login</h1>
+
+            {error && <p className="text-red-500">{error}</p>}
+
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border p-2 rounded"
+            />
+
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border p-2 rounded"
+            />
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-black text-white p-2 rounded"
+            >
+              {loading ? "Logging in..." : "Login"}
+            </button>
+          </form>
+        </div>
       </div>
-      </div>
-      
     </div>
   );
 }
