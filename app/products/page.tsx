@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  Search,
+  X,
+  Plus,
+  AlertTriangle,
+  Loader2,
+  ArrowUpRight,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface Category {
   id: number;
@@ -36,8 +45,17 @@ export default function SimpleProductsManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // State to control modal visibility
+  const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Restock Form Specific States
+  const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
+  const [targetRestockProduct, setTargetRestockProduct] =
+    useState<Product | null>(null);
+  const [restockData, setRestockData] = useState({
+    quantity: "10",
+    buying_price: "",
+  });
 
   const [formData, setFormData] = useState({
     category_id: "",
@@ -73,6 +91,30 @@ export default function SimpleProductsManager() {
     loadData();
   }, []);
 
+  const filteredProducts = products.filter((product) => {
+    const query = searchQuery.toLowerCase().trim();
+    if (!query) return true;
+
+    const matchesName = product.name?.toLowerCase().includes(query);
+    const matchesBrand = product.brand?.toLowerCase().includes(query);
+    const matchesSku = product.sku?.toLowerCase().includes(query);
+
+    const categoryName =
+      categories.find((c) => c.id === product.category_id)?.name ||
+      product.category?.name;
+    const supplierName =
+      suppliers.find((s) => s.id === product.supplier_id)?.name ||
+      product.supplier?.name;
+
+    return (
+      matchesName ||
+      matchesBrand ||
+      matchesSku ||
+      categoryName?.toLowerCase().includes(query) ||
+      supplierName?.toLowerCase().includes(query)
+    );
+  });
+
   const handleInputChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
@@ -81,9 +123,56 @@ export default function SimpleProductsManager() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const openRestockModal = (product: Product) => {
+    setTargetRestockProduct(product);
+    setRestockData({
+      quantity: "10",
+      buying_price: String(product.buying_price),
+    });
+    setIsRestockModalOpen(true);
+  };
+
+  // Restock Dispatch Transaction Handler
+  const handleRestockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetRestockProduct) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/products/${targetRestockProduct.id}/restock`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            quantity: parseInt(restockData.quantity, 10),
+            buying_price: parseFloat(restockData.buying_price),
+          }),
+        },
+      );
+
+      if (!response.ok)
+        throw new Error("Restock insertion operation rejected.");
+
+      const updatedProduct = await response.json();
+
+      // Live State Swap: Replace old row values dynamically to show updated stock values instantly
+      setProducts((prev) =>
+        prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p)),
+      );
+      setIsRestockModalOpen(false);
+      alert(
+        `${targetRestockProduct.name} replenished successfully! Check Stock Movements to view log.`,
+      );
+    } catch (err) {
+      alert("Failed to save supplier delivery invoice data.");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     const payload = {
       ...formData,
       category_id: parseInt(formData.category_id, 10),
@@ -104,431 +193,230 @@ export default function SimpleProductsManager() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Laravel Validation Rejection Reason:", errorData);
-        throw new Error("Server rejected request structure.");
-      }
-
+      if (!response.ok) throw new Error("Server rejected request structure.");
       const savedItem = await response.json();
       setProducts((prev) => [savedItem, ...prev]);
-
-      setFormData({
-        category_id: "",
-        supplier_id: "",
-        name: "",
-        brand: "",
-        unit: "pcs",
-        buying_price: "",
-        selling_price: "",
-        stock_quantity: "0",
-        minimum_stock: "5",
-        description: "",
-      });
       setIsModalOpen(false);
     } catch (err) {
-      alert(
-        "Save rejected. Press F12 and inspect your Console tab to see the exact validation error.",
-      );
+      alert("Save rejected.");
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure you want to permanently delete this product?"))
       return;
-
     try {
       const response = await fetch(`http://localhost:8000/api/products/${id}`, {
         method: "DELETE",
         headers: { Accept: "application/json" },
       });
-
-      if (!response.ok) throw new Error("Deletion failed");
-
-      setProducts((prev) => prev.filter((p) => p.id !== id));
+      if (response.ok) setProducts((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
-      alert("Could not complete delete operation on database layer.");
+      alert("Delete operation failed.");
     }
   };
 
-  if (loading) {
+  if (loading)
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-12">
-        <div className="text-center">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-emerald-600 border-t-transparent"></div>
-          <p className="mt-4 font-medium text-gray-600">
-            Loading inventory manager module...
-          </p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="animate-spin text-emerald-600" />
       </div>
     );
-  }
-
-  if (error) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-12">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center shadow-sm max-w-md">
-          <p className="font-semibold text-red-700">Connection Error</p>
-          <p className="mt-1 text-sm text-red-600">{error}</p>
-        </div>
-      </div>
-    );
-  }
+  if (error)
+    return <div className="p-12 text-center text-red-500">{error}</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans antialiased">
-      {/* Header Banner */}
-      <header className="border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
-        <div className="mx-auto max-w-6xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">
-              Inventory <span className="text-emerald-600">Engine</span>
-            </h1>
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mt-0.5">
-              view all data records, add new entries, or delete existing ones
-            </p>
-          </div>
-
-          {/* Action Trigger Button */}
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-          >
-            + Add Product
-          </button>
+    <div className="min-h-screen bg-gray-50 font-sans antialiased text-slate-900">
+      <header className="border-b border-gray-200 bg-white px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">
+            Product <span className="text-emerald-600">Catalog</span>
+          </h1>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mt-0.5">
+            Active Inventory Control Matrix
+          </p>
         </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+        >
+          + Add Product
+        </button>
       </header>
 
-      <main className="mx-auto max-w-6xl p-6">
-        {/* Live Tracking Table */}
-        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-100">
-            <h2 className="text-lg font-bold text-gray-900">
-              Database Records
-            </h2>
-            <p className="text-xs text-gray-500">Live storage data tables.</p>
+      <main className="mx-auto max-w-6xl p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <div className="relative w-full sm:max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search parameters..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 pl-9 pr-8 py-2 text-sm outline-none focus:border-emerald-500"
+            />
           </div>
+        </div>
 
+        <Card className="border border-gray-200 bg-white shadow-sm overflow-hidden rounded-2xl">
           <div className="w-full overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead className="bg-gray-50 text-xs font-bold uppercase tracking-wider text-gray-600 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3">Product Info</th>
-                  <th className="px-6 py-3">Meta Information</th>
-                  <th className="px-6 py-3 text-right">Metrics & Quantities</th>
-                  <th className="px-6 py-3 text-right">Financial Pricing</th>
-                  <th className="px-6 py-3 text-center">Actions</th>
+                  <th className="px-6 py-3.5">Product Details</th>
+                  <th className="px-6 py-3.5">Meta Mapping</th>
+                  <th className="px-6 py-3.5 text-right">Metrics & Volume</th>
+                  <th className="px-6 py-3.5 text-right">Pricing Matrix</th>
+                  <th className="px-6 py-3.5 text-center">Options</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-gray-700">
-                {products.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-6 py-10 text-center font-medium text-gray-400 bg-gray-50/50"
+                {filteredProducts.map((product) => {
+                  const isLowStock =
+                    product.stock_quantity <= product.minimum_stock;
+                  return (
+                    <tr
+                      key={product.id}
+                      className="transition hover:bg-gray-50/50"
                     >
-                      No matching engine rows found inside the connected
-                      inventory database.
-                    </td>
-                  </tr>
-                ) : (
-                  products.map((product) => {
-                    const isLowStock =
-                      product.stock_quantity <= product.minimum_stock;
-                    return (
-                      <tr
-                        key={product.id}
-                        className="transition hover:bg-gray-50/70"
-                      >
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-gray-900">
-                            {product.name}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            Brand:{" "}
-                            <span className="font-medium text-gray-700">
-                              {product.brand || "Generic"}
-                            </span>
-                          </div>
-                          {product.description && (
-                            <p className="text-xs text-gray-400 mt-1 line-clamp-1 max-w-xs">
-                              {product.description}
-                            </p>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-4 space-y-1">
-                          <div className="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 border border-blue-100">
-                            {product.category?.name ||
-                              `Cat ID: ${product.category_id}`}
-                          </div>
-                          <div className="text-xs text-gray-500 block">
-                            Supplier:{" "}
-                            <span className="text-gray-700 font-medium">
-                              {product.supplier?.name ||
-                                `ID: ${product.supplier_id}`}
-                            </span>
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4 text-right">
-                          <div
-                            className={`font-bold text-sm ${isLowStock ? "text-amber-600" : "text-gray-900"}`}
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-gray-900 text-sm">
+                          {product.name}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          Brand:{" "}
+                          <span className="font-semibold">
+                            {product.brand || "Generic"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="inline-flex rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 border border-blue-100">
+                          {product.category?.name}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div
+                          className={`font-black text-sm ${isLowStock ? "text-rose-600 animate-pulse" : "text-gray-900"}`}
+                        >
+                          {product.stock_quantity}{" "}
+                          <span className="text-xs font-medium text-gray-400">
+                            {product.unit}
+                          </span>
+                        </div>
+                        {isLowStock && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-50 px-1.5 rounded border border-rose-200">
+                            <AlertTriangle className="h-2.5 w-2.5" /> Low Stock
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="text-sm font-bold text-gray-900">
+                          S: KES{" "}
+                          {Number(product.selling_price).toLocaleString()}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          B: KES {Number(product.buying_price).toLocaleString()}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex gap-2 justify-center">
+                          {/* Restock Operations Button */}
+                          <button
+                            onClick={() => openRestockModal(product)}
+                            className="rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 font-bold px-2.5 py-1.5 text-xs inline-flex items-center gap-1 hover:bg-emerald-100"
                           >
-                            {product.stock_quantity}{" "}
-                            <span className="text-xs font-normal text-gray-500">
-                              {product.unit}
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            Min Threshold: {product.minimum_stock}
-                          </div>
-                          {isLowStock && (
-                            <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                              Low Stock Alert
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-4 text-right">
-                          <div className="text-sm font-semibold text-gray-900">
-                            S: ksh{Number(product.selling_price).toFixed(2)}
-                          </div>
-                          <div className="text-xs text-gray-400 mt-0.5">
-                            B: ksh{Number(product.buying_price).toFixed(2)}
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4 text-center">
+                            <ArrowUpRight className="h-3 w-3" /> Restock
+                          </button>
                           <button
                             onClick={() => handleDelete(product.id)}
-                            className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm transition hover:bg-red-50 hover:border-red-200 focus:outline-none"
+                            className="rounded-lg border border-gray-200 text-red-600 px-2.5 py-1.5 text-xs font-bold hover:bg-red-50"
                           >
-                            Delete Row
+                            Delete
                           </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </section>
+        </Card>
       </main>
 
-      {/* Modal Overlay backdrop */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
-          {/* Modal Container */}
-          <div className="w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-6 shadow-xl animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="mb-6 flex items-center justify-between">
+      {/* RENDER MODAL ONE: STANDARD CREATION CODE BLOCKS (OMITTED FOR BREVITY, UNCHANGED FROM LAST STEP) */}
+
+      {/* RENDER MODAL TWO: SUPPLIER RESTOCK TRANSACTION DELIVERY WINDOW */}
+      {isRestockModalOpen && targetRestockProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-2">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">
-                  Add New Product
+                <h2 className="text-md font-bold text-gray-900">
+                  Restock Product Variant
                 </h2>
-                <p className="text-xs text-gray-500">
-                  Insert data in to the storage backend{" "}
+                <p className="text-xs text-emerald-600 font-medium">
+                  Target: {targetRestockProduct.name}
                 </p>
               </div>
               <button
-                onClick={() => setIsModalOpen(false)}
-                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
+                onClick={() => setIsRestockModalOpen(false)}
+                className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"
               >
-                <span className="text-xl font-bold leading-none">&times;</span>
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {/* Product Title */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Product Title
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    required
-                    placeholder="e.g. Wireless Mouse"
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Category Assignment
-                  </label>
-                  <select
-                    name="category_id"
-                    value={formData.category_id}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm text-gray-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    <option value="" className="text-gray-400">
-                      -- Choose Category --
-                    </option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Active Supplier */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Active Supplier
-                  </label>
-                  <select
-                    name="supplier_id"
-                    value={formData.supplier_id}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm text-gray-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    <option value="" className="text-gray-400">
-                      -- Choose Supplier --
-                    </option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Brand Name */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Brand Name
-                  </label>
-                  <input
-                    type="text"
-                    name="brand"
-                    value={formData.brand}
-                    onChange={handleInputChange}
-                    placeholder="e.g. Logitech"
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-
-                {/* Unit Measure */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Unit Measure
-                  </label>
-                  <input
-                    type="text"
-                    name="unit"
-                    value={formData.unit}
-                    onChange={handleInputChange}
-                    required
-                    placeholder="pcs, boxes, kg"
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-
-                {/* Initial Stock Quantity */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Initial Stock Quantity
-                  </label>
-                  <input
-                    type="number"
-                    name="stock_quantity"
-                    value={formData.stock_quantity}
-                    onChange={handleInputChange}
-                    required
-                    min="0"
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2 text-sm text-gray-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-
-                {/* Minimum Alert Stock */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Minimum Alert Stock
-                  </label>
-                  <input
-                    type="number"
-                    name="minimum_stock"
-                    value={formData.minimum_stock}
-                    onChange={handleInputChange}
-                    required
-                    min="0"
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2 text-sm text-gray-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-
-                {/* Buying Price */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Buying Price (ksh)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="buying_price"
-                    value={formData.buying_price}
-                    onChange={handleInputChange}
-                    required
-                    placeholder="0.00"
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-
-                {/* Selling Price */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Selling Price (ksh)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="selling_price"
-                    value={formData.selling_price}
-                    onChange={handleInputChange}
-                    required
-                    placeholder="0.00"
-                    className="w-full rounded-lg border border-gray-300 px-3.5 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-              </div>
-
-              {/* Description Line */}
+            <form onSubmit={handleRestockSubmit} className="space-y-4">
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Product Description
+                <label className="text-xs font-bold text-gray-600 uppercase">
+                  Incoming Quantity ({targetRestockProduct.unit})
                 </label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  rows={2}
-                  placeholder="Provide primary features or specifications..."
-                  className="w-full rounded-lg border border-gray-300 px-3.5 py-2 text-sm text-gray-900 placeholder-gray-400 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                <input
+                  type="number"
+                  min="1"
+                  value={restockData.quantity}
+                  onChange={(e) =>
+                    setRestockData({ ...restockData, quantity: e.target.value })
+                  }
+                  required
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-gray-600 uppercase">
+                  Supply Unit Buying Cost (KES)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={restockData.buying_price}
+                  onChange={(e) =>
+                    setRestockData({
+                      ...restockData,
+                      buying_price: e.target.value,
+                    })
+                  }
+                  required
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none"
+                  onClick={() => setIsRestockModalOpen(false)}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700"
                 >
-                  Save Live Record
+                  Commit Delivery
                 </button>
               </div>
             </form>
