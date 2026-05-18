@@ -172,7 +172,8 @@ export default function SuppliersManager() {
               Supplier <span className="text-emerald-600">Registry</span>
             </h1>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mt-0.5">
-              Connected to Laravel API Layer
+              Add delete or modify your supply channel vendors and entities in
+              real-time
             </p>
           </div>
 
@@ -192,9 +193,7 @@ export default function SuppliersManager() {
             <h2 className="text-lg font-bold text-gray-900">
               Active Supply Channels
             </h2>
-            <p className="text-xs text-gray-500">
-              Live vendor distribution items pulled straight from your database.
-            </p>
+            <p className="text-xs text-gray-500">Live vendor distribution</p>
           </div>
 
           <div className="w-full overflow-x-auto">
