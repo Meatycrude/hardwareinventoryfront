@@ -12,6 +12,17 @@ import {
   CalendarDays,
 } from "lucide-react";
 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+} from "recharts";
+
 interface DashboardStats {
   total_products: number;
   total_categories: number;
@@ -24,13 +35,12 @@ interface DashboardStats {
 export default function DashboardPage() {
   const router = useRouter();
   const { user, token } = useAuth();
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!token) {
-      console.log(token);
-
       router.push("/login");
       return;
     }
@@ -42,7 +52,7 @@ export default function DashboardPage() {
       },
     })
       .then((res) => {
-        if (!res.ok) throw new Error("API infrastructure response error.");
+        if (!res.ok) throw new Error("Dashboard API error");
         return res.json();
       })
       .then((data) => {
@@ -67,6 +77,7 @@ export default function DashboardPage() {
 
   const formatCurrency = (val: string | number | undefined) => {
     const numericValue = parseFloat(val as string) || 0;
+
     return `KES ${numericValue.toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -106,6 +117,36 @@ export default function DashboardPage() {
 
   const lowStockCount = stats?.low_stock_products ?? 0;
 
+  const salesChartData = [
+    {
+      name: "Today",
+      sales: Number(stats?.today_sales ?? 0),
+    },
+    {
+      name: "Total",
+      sales: Number(stats?.total_sales ?? 0),
+    },
+  ];
+
+  const inventoryChartData = [
+    {
+      name: "Products",
+      value: stats?.total_products ?? 0,
+    },
+    {
+      name: "Categories",
+      value: stats?.total_categories ?? 0,
+    },
+    {
+      name: "Suppliers",
+      value: stats?.total_suppliers ?? 0,
+    },
+    {
+      name: "Low Stock",
+      value: stats?.low_stock_products ?? 0,
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -113,6 +154,7 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">
             Inventory Overview
           </h1>
+
           <p className="text-emerald-600 text-xs font-semibold uppercase tracking-wider mt-1">
             Admin Profile:{" "}
             <span className="font-bold text-slate-700 normal-case">
@@ -141,12 +183,15 @@ export default function DashboardPage() {
               <CardTitle className="text-sm font-bold text-slate-500">
                 {card.title}
               </CardTitle>
+
               <card.icon className={`h-5 w-5 ${card.color}`} />
             </CardHeader>
+
             <CardContent>
               <div className="text-2xl font-black tracking-tight text-slate-900">
                 {card.value}
               </div>
+
               <p className="text-[11px] text-slate-400 mt-1 font-medium">
                 {card.subtitle}
               </p>
@@ -155,17 +200,42 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-7">
-        <Card className="col-span-4 border border-slate-200 shadow-sm bg-white">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="border border-slate-200 shadow-sm bg-white">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-slate-800">
-              Quick Inventory Tools
+              Sales Revenue
             </CardTitle>
           </CardHeader>
-          <CardContent className="h-[200px] flex items-center justify-center border-2 border-dashed border-slate-100 rounded-lg m-4 bg-slate-50/50">
-            <p className="text-slate-400 text-sm italic font-medium">
-              Main chart visualization placeholder
-            </p>
+
+          <CardContent className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={salesChartData}>
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="sales" strokeWidth={3} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-slate-200 shadow-sm bg-white">
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-slate-800">
+              Inventory Summary
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={inventoryChartData}>
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" />
+              </BarChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
