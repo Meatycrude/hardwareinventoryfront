@@ -46,7 +46,7 @@ export default function SalesManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Interface view states
+ 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("cash");
