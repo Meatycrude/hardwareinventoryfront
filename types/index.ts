@@ -2,7 +2,7 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  role: "admin" | "cashier" | "store_manager";
+  role: "admin" | "cashier" | "storekeeper";
 }
 
 export interface Category {
