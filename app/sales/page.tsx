@@ -8,7 +8,16 @@ import {
   ShoppingCart,
   Loader2,
   ArrowRight,
+  Receipt,
+  Ban,
+  Plus,
+  CreditCard,
 } from "lucide-react";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 interface Product {
   id: number;
@@ -35,6 +44,8 @@ interface Sale {
   payment_method: string;
   total_amount: string | number;
   created_at: string;
+  status: "completed" | "cancelled";
+  cancelled_at?: string | null;
   items: SaleItem[];
 }
 
@@ -118,30 +129,27 @@ export default function SalesManager() {
     let monthly = 0;
     let absoluteTotal = 0;
 
-    sales.forEach((sale) => {
-      const saleDate = new Date(sale.created_at);
-      const amount = Number(sale.total_amount) || 0;
+    sales
+      .filter((sale) => sale.status !== "cancelled")
+      .forEach((sale) => {
+        const saleDate = new Date(sale.created_at);
+        const amount = Number(sale.total_amount) || 0;
 
-      absoluteTotal += amount;
+        absoluteTotal += amount;
 
-      const diffTime = Math.abs(now.getTime() - saleDate.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const diffTime = Math.abs(now.getTime() - saleDate.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-      if (saleDate.toDateString() === now.toDateString()) {
-        daily += amount;
-      }
+        if (saleDate.toDateString() === now.toDateString()) daily += amount;
+        if (diffDays <= 7) weekly += amount;
 
-      if (diffDays <= 7) {
-        weekly += amount;
-      }
-
-      if (
-        saleDate.getMonth() === now.getMonth() &&
-        saleDate.getFullYear() === now.getFullYear()
-      ) {
-        monthly += amount;
-      }
-    });
+        if (
+          saleDate.getMonth() === now.getMonth() &&
+          saleDate.getFullYear() === now.getFullYear()
+        ) {
+          monthly += amount;
+        }
+      });
 
     return { daily, weekly, monthly, absoluteTotal };
   };
@@ -150,7 +158,6 @@ export default function SalesManager() {
 
   const filteredProductOptions = products.filter((p) => {
     const query = productSearchQuery.toLowerCase().trim();
-
     if (!query) return true;
 
     return (
@@ -161,7 +168,6 @@ export default function SalesManager() {
 
   const filteredSalesLedger = sales.filter((sale) => {
     const query = ledgerSearchQuery.toLowerCase().trim();
-
     if (!query) return true;
 
     const inv = (sale.invoice_number || sale.invoice_no || "").toLowerCase();
@@ -173,10 +179,7 @@ export default function SalesManager() {
   function handleAddToOrder() {
     if (!selectedProductId) return;
 
-    const product = products.find(
-      (p) => p.id === Number(selectedProductId)
-    );
-
+    const product = products.find((p) => p.id === Number(selectedProductId));
     if (!product) return;
 
     if (selectedQuantity > product.stock_quantity) {
@@ -185,9 +188,7 @@ export default function SalesManager() {
     }
 
     setCart((prev) => {
-      const existing = prev.find(
-        (item) => item.product_id === product.id
-      );
+      const existing = prev.find((item) => item.product_id === product.id);
 
       if (existing) {
         const newQty = existing.quantity + selectedQuantity;
@@ -198,9 +199,7 @@ export default function SalesManager() {
         }
 
         return prev.map((item) =>
-          item.product_id === product.id
-            ? { ...item, quantity: newQty }
-            : item
+          item.product_id === product.id ? { ...item, quantity: newQty } : item,
         );
       }
 
@@ -222,14 +221,12 @@ export default function SalesManager() {
   }
 
   function handleRemoveFromCart(productId: number) {
-    setCart((prev) =>
-      prev.filter((item) => item.product_id !== productId)
-    );
+    setCart((prev) => prev.filter((item) => item.product_id !== productId));
   }
 
   const cartTotal = cart.reduce(
     (sum, item) => sum + item.price * item.quantity,
-    0
+    0,
   );
 
   async function handleCreateSale(e: React.FormEvent) {
@@ -276,7 +273,7 @@ export default function SalesManager() {
         throw new Error(
           errData.error ||
             errData.message ||
-            "Validation error processing invoice."
+            "Validation error processing invoice.",
         );
       }
 
@@ -292,13 +289,61 @@ export default function SalesManager() {
     }
   }
 
+  async function handleVoidSale(saleId: number) {
+    const confirmed = confirm("Are you sure you want to cancel this sale?");
+    if (!confirmed) return;
+
+    const token = getToken();
+
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/sales/${saleId}/void`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to cancel sale");
+      }
+
+      setSales((prev) =>
+        prev.map((sale) => (sale.id === saleId ? data : sale)),
+      );
+
+      alert("Sale cancelled successfully.");
+    } catch (error: any) {
+      alert(error.message);
+    }
+  }
+
+  function formatMoney(value: number | string) {
+    return `KES ${Number(value).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="text-center space-y-2">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-600 mx-auto" />
-          <p className="font-medium text-gray-600 text-sm">
-            Syncing transaction records...
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="rounded-2xl border bg-white p-8 text-center shadow-sm">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
+          <p className="mt-3 text-sm font-semibold text-slate-600">
+            Syncing sales records...
           </p>
         </div>
       </div>
@@ -307,185 +352,246 @@ export default function SalesManager() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center shadow-sm max-w-md">
-          <p className="font-semibold text-red-700">Connection Error</p>
-          <p className="mt-1 text-sm text-red-600">{error}</p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <Card className="max-w-md border-red-200 bg-red-50">
+          <CardContent className="p-6 text-center">
+            <p className="font-bold text-red-700">Connection Error</p>
+            <p className="mt-1 text-sm text-red-600">{error}</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans antialiased text-slate-900">
-      <header className="border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
-        <div className="mx-auto max-w-6xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="flex flex-col gap-4 rounded-3xl border bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">
-              Sales & <span className="text-emerald-600">Revenue</span>
+            <Badge className="mb-3 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+              Sales Terminal
+            </Badge>
+
+            <h1 className="text-3xl font-black tracking-tight">
+              Sales & Revenue
             </h1>
 
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mt-0.5">
-              Live Auditing Panel Terminal
+            <p className="mt-1 text-sm text-slate-500">
+              Manage checkout transactions, receipts, and cancelled sales.
             </p>
           </div>
 
-          <button
+          <Button
             onClick={() => {
               setProductSearchQuery("");
               setSelectedProductId("");
               setIsModalOpen(true);
             }}
-            className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+            className="bg-emerald-700 hover:bg-emerald-800"
           >
-            + New Order Checkout
-          </button>
+            <Plus className="mr-2 h-4 w-4" />
+            New Order Checkout
+          </Button>
         </div>
-      </header>
 
-      <main className="mx-auto max-w-6xl p-6 space-y-6">
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
             ["Daily Revenue", metrics.daily],
-            ["Weekly Performance", metrics.weekly],
-            ["Monthly Statements", metrics.monthly],
-            ["Absolute Gross Revenue", metrics.absoluteTotal],
+            ["Weekly Revenue", metrics.weekly],
+            ["Monthly Revenue", metrics.monthly],
+            ["Gross Revenue", metrics.absoluteTotal],
           ].map(([label, value]) => (
-            <div
-              key={label as string}
-              className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
-            >
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                {label}
-              </p>
+            <Card key={label as string} className="border-0 shadow-sm">
+              <CardContent className="p-5">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-400">
+                  {label}
+                </p>
 
-              <p className="mt-2 text-2xl font-black text-gray-900">
-                KES{" "}
-                {Number(value).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                })}
-              </p>
-            </div>
+                <p className="mt-2 text-2xl font-black">
+                  {formatMoney(Number(value))}
+                </p>
+              </CardContent>
+            </Card>
           ))}
         </section>
 
-        <div className="relative max-w-md bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
-          <Search className="absolute left-6 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <div className="relative max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
-          <input
-            type="text"
-            placeholder="Search ledger by invoice # or payment..."
-            value={ledgerSearchQuery}
-            onChange={(e) => setLedgerSearchQuery(e.target.value)}
-            className="w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 py-1.5 text-xs outline-none focus:border-emerald-500"
-          />
-        </div>
+              <Input
+                placeholder="Search by invoice or payment method..."
+                value={ledgerSearchQuery}
+                onChange={(e) => setLedgerSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-        <section className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-          <div className="w-full overflow-x-auto">
-            <table className="w-full border-collapse text-left text-sm">
-              <thead className="bg-gray-50 text-xs font-bold uppercase tracking-wider text-gray-600 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3.5">Invoice Details</th>
-                  <th className="px-6 py-3.5">Date</th>
-                  <th className="px-6 py-3.5">Payment</th>
-                  <th className="px-6 py-3.5">Items</th>
-                  <th className="px-6 py-3.5 text-right">Total</th>
-                </tr>
-              </thead>
+        <Card className="overflow-hidden border-0 shadow-sm">
+          <CardHeader className="border-b bg-white">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <CreditCard className="h-5 w-5 text-emerald-700" />
+              Sales Ledger
+            </CardTitle>
+          </CardHeader>
 
-              <tbody className="divide-y divide-gray-100 text-gray-700">
-                {filteredSalesLedger.map((sale) => (
-                  <tr
-                    key={sale.id}
-                    className="transition hover:bg-gray-50/70"
-                  >
-                    <td className="px-6 py-4 font-mono font-bold text-emerald-700 text-xs">
-                      {sale.invoice_number || sale.invoice_no || `INV-${sale.id}`}
-                    </td>
-
-                    <td className="px-6 py-4 text-xs text-gray-600 whitespace-nowrap">
-                      {new Date(sale.created_at).toLocaleString()}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span className="inline-block px-2 py-0.5 text-xs font-medium bg-slate-100 border border-slate-200 text-slate-800 rounded uppercase tracking-wider font-mono">
-                        {sale.payment_method}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 max-w-sm">
-                      <div className="flex flex-wrap gap-1">
-                        {sale.items?.map((item) => (
-                          <span
-                            key={item.id}
-                            className="inline-block text-[10px] bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-slate-600 font-medium"
-                          >
-                            {item.product?.name || `Product ID: ${item.product_id}`} ×
-                            {item.quantity}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4 text-right font-bold text-gray-900">
-                      KES{" "}
-                      {Number(sale.total_amount).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                      })}
-                    </td>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-6 py-4 font-black">Invoice</th>
+                    <th className="px-6 py-4 font-black">Date</th>
+                    <th className="px-6 py-4 font-black">Payment</th>
+                    <th className="px-6 py-4 font-black">Items</th>
+                    <th className="px-6 py-4 font-black">Status</th>
+                    <th className="px-6 py-4 text-right font-black">Total</th>
+                    <th className="px-6 py-4 text-right font-black">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </main>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {filteredSalesLedger.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-6 py-12 text-center text-sm font-medium text-slate-400"
+                      >
+                        No sales records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredSalesLedger.map((sale) => (
+                      <tr
+                        key={sale.id}
+                        className="transition hover:bg-slate-50"
+                      >
+                        <td className="px-6 py-4 font-mono text-xs font-black text-emerald-700">
+                          {sale.invoice_number ||
+                            sale.invoice_no ||
+                            `INV-${sale.id}`}
+                        </td>
+
+                        <td className="whitespace-nowrap px-6 py-4 text-xs text-slate-500">
+                          {new Date(sale.created_at).toLocaleString()}
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <Badge variant="outline" className="uppercase">
+                            {sale.payment_method}
+                          </Badge>
+                        </td>
+
+                        <td className="max-w-sm px-6 py-4">
+                          <div className="flex flex-wrap gap-1">
+                            {sale.items?.map((item) => (
+                              <span
+                                key={item.id}
+                                className="rounded-full border bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-600"
+                              >
+                                {item.product?.name ||
+                                  `Product ID: ${item.product_id}`}{" "}
+                                ×{item.quantity}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          {sale.status === "cancelled" ? (
+                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
+                              Cancelled
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                              Completed
+                            </Badge>
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 text-right font-black">
+                          {formatMoney(sale.total_amount)}
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                router.push(`/sales/${sale.id}/receipt`)
+                              }
+                            >
+                              <Receipt className="mr-1 h-3 w-3" />
+                              Receipt
+                            </Button>
+
+                            {sale.status !== "cancelled" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleVoidSale(sale.id)}
+                                className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              >
+                                <Ban className="mr-1 h-3 w-3" />
+                                Void
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm">
-          <div className="w-full max-w-4xl rounded-2xl border border-gray-200 bg-white p-6 shadow-xl max-h-[90vh] flex flex-col">
-            <div className="mb-4 flex items-center justify-between border-b border-gray-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <Card className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border-0 shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between border-b">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">
-                  New Checkout Transaction
-                </h2>
-
-                <p className="text-xs text-gray-500">
-                  Compile items and complete sale.
+                <CardTitle>New Checkout Transaction</CardTitle>
+                <p className="mt-1 text-sm text-slate-500">
+                  Select products, confirm payment method, and complete sale.
                 </p>
               </div>
 
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 onClick={() => setIsModalOpen(false)}
-                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition"
               >
                 <X className="h-4 w-4" />
-              </button>
-            </div>
+              </Button>
+            </CardHeader>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-6 overflow-y-auto pr-1 flex-1 py-1">
-              <div className="md:col-span-2 space-y-4 border-r border-gray-100 pr-3">
-                <h3 className="text-xs font-extrabold uppercase tracking-wide text-emerald-600">
+            <CardContent className="grid flex-1 gap-6 overflow-y-auto p-6 md:grid-cols-5">
+              <div className="space-y-4 md:col-span-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-emerald-700">
                   1. Locate Product
                 </h3>
 
-                <input
-                  type="text"
+                <Input
                   placeholder="Search product..."
                   value={productSearchQuery}
                   onChange={(e) => {
                     setProductSearchQuery(e.target.value);
                     setSelectedProductId("");
                   }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs outline-none focus:border-emerald-500"
                 />
 
                 <select
                   value={selectedProductId}
                   onChange={(e) => setSelectedProductId(e.target.value)}
-                  size={6}
-                  className="w-full rounded-lg border border-gray-300 bg-white p-1 text-xs outline-none focus:border-emerald-500"
+                  size={7}
+                  className="w-full rounded-xl border bg-white p-2 text-xs outline-none focus:border-emerald-500"
                 >
                   {filteredProductOptions.map((p) => (
                     <option
@@ -493,86 +599,87 @@ export default function SalesManager() {
                       value={p.id}
                       disabled={p.stock_quantity <= 0}
                     >
-                      {p.name} [{p.brand || "Generic"}] - KES{" "}
-                      {Number(p.selling_price).toFixed(2)} ({p.stock_quantity} left)
+                      {p.name} [{p.brand || "Generic"}] -{" "}
+                      {formatMoney(p.selling_price)} ({p.stock_quantity} left)
                     </option>
                   ))}
                 </select>
 
-                <input
+                <Input
                   type="number"
                   min="1"
                   value={selectedQuantity}
                   onChange={(e) =>
                     setSelectedQuantity(Number(e.target.value) || 1)
                   }
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:border-emerald-500"
                 />
 
-                <button
+                <Button
                   type="button"
                   onClick={handleAddToOrder}
                   disabled={!selectedProductId}
-                  className="w-full inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 px-4 py-2 text-xs font-bold hover:bg-emerald-100 transition disabled:opacity-40"
+                  className="w-full bg-emerald-700 hover:bg-emerald-800"
                 >
-                  Add To Cart <ArrowRight className="h-3 w-3" />
-                </button>
+                  Add To Cart <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
               </div>
 
               <form
                 onSubmit={handleCreateSale}
-                className="md:col-span-3 flex flex-col h-full space-y-4 pl-1"
+                className="flex flex-col space-y-4 md:col-span-3"
               >
-                <h3 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
-                  2. Cart
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  2. Cart Manifest
                 </h3>
 
-                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-[220px] overflow-y-auto bg-slate-50/40 flex-1">
+                <div className="min-h-[230px] rounded-2xl border bg-slate-50">
                   {cart.length === 0 ? (
-                    <div className="p-10 text-center flex flex-col items-center justify-center text-slate-400">
-                      <ShoppingCart className="h-6 w-6 mb-1 stroke-1" />
-                      <p className="text-xs font-medium italic">
-                        Add items to cart.
-                      </p>
+                    <div className="flex h-full min-h-[230px] flex-col items-center justify-center text-slate-400">
+                      <ShoppingCart className="mb-2 h-8 w-8" />
+                      <p className="text-sm font-medium">Cart is empty.</p>
                     </div>
                   ) : (
-                    cart.map((item) => (
-                      <div
-                        key={item.product_id}
-                        className="p-3 flex items-center justify-between bg-white text-xs"
-                      >
-                        <div>
-                          <div className="font-bold text-slate-900">
-                            {item.name}
+                    <div className="divide-y">
+                      {cart.map((item) => (
+                        <div
+                          key={item.product_id}
+                          className="flex items-center justify-between bg-white p-4 text-sm"
+                        >
+                          <div>
+                            <p className="font-bold">{item.name}</p>
+                            <p className="text-xs text-slate-500">
+                              {item.quantity} × {formatMoney(item.price)}
+                            </p>
                           </div>
-                          <div className="text-slate-400 font-medium mt-0.5">
-                            {item.quantity} × KES {item.price.toLocaleString()}
+
+                          <div className="flex items-center gap-3">
+                            <p className="font-black">
+                              {formatMoney(item.price * item.quantity)}
+                            </p>
+
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                handleRemoveFromCart(item.product_id)
+                              }
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-3">
-                          <span className="font-black text-slate-800">
-                            KES {(item.price * item.quantity).toLocaleString()}
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveFromCart(item.product_id)}
-                            className="text-red-500 hover:text-red-700 font-black p-1"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                      ))}
+                    </div>
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="grid gap-3 md:grid-cols-2">
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs outline-none focus:border-emerald-500"
+                    className="rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500"
                   >
                     <option value="cash">Cash</option>
                     <option value="card">Card</option>
@@ -580,40 +687,36 @@ export default function SalesManager() {
                     <option value="bank">Bank</option>
                   </select>
 
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-right">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <div className="rounded-xl border bg-slate-50 p-3 text-right">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                       Grand Total
-                    </span>
-
-                    <div className="text-lg font-black text-emerald-700">
-                      KES{" "}
-                      {cartTotal.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                      })}
-                    </div>
+                    </p>
+                    <p className="text-xl font-black text-emerald-700">
+                      {formatMoney(cartTotal)}
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
-                  <button
+                <div className="flex justify-end gap-3 border-t pt-4">
+                  <Button
                     type="button"
+                    variant="outline"
                     onClick={() => setIsModalOpen(false)}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     Close
-                  </button>
+                  </Button>
 
-                  <button
+                  <Button
                     type="submit"
                     disabled={cart.length === 0}
-                    className="rounded-lg bg-emerald-600 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-40"
+                    className="bg-emerald-700 hover:bg-emerald-800"
                   >
                     Complete Sale
-                  </button>
+                  </Button>
                 </div>
               </form>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
