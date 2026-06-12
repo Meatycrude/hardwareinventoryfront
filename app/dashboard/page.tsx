@@ -21,6 +21,7 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  CartesianGrid,
 } from "recharts";
 
 interface DashboardStats {
@@ -30,14 +31,24 @@ interface DashboardStats {
   total_sales: string | number;
   today_sales: string | number;
   low_stock_products: number;
+  cancelled_sales: number;
 }
+
+interface SalesTrend {
+  date: string;
+  revenue: string | number;
+}
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, token } = useAuth();
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [salesTrend, setSalesTrend] = useState<SalesTrend[]>([]);
   const [loading, setLoading] = useState(true);
+  const [recentActivity, setRecentActivity] = useState([]);
 
   useEffect(() => {
     if (!token) {
@@ -45,25 +56,59 @@ export default function DashboardPage() {
       return;
     }
 
-    fetch("http://localhost:8000/api/dashboard", {
+    async function loadDashboard() {
+      try {
+        const [statsRes, trendRes] = await Promise.all([
+          fetch(`${API_URL}/dashboard`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+          }),
+          fetch(`${API_URL}/dashboard/sales-trend`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+          }),
+        ]);
+
+        if (!statsRes.ok) throw new Error("Dashboard API error");
+
+        setStats(await statsRes.json());
+
+        if (trendRes.ok) {
+          const trendData = await trendRes.json();
+
+          setSalesTrend(
+            trendData.map((item: SalesTrend) => ({
+              ...item,
+              revenue: Number(item.revenue),
+            })),
+          );
+        }
+      } catch (err) {
+        console.error("Failed to load statistics:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDashboard();
+  }, [token, router]);
+
+  useEffect(() => {
+    if (!token || user?.role !== "admin") return;
+
+    fetch(`${API_URL}/dashboard/recent-activity`, {
       headers: {
-        Authorization: `Bearer ${token}`,
         Accept: "application/json",
+        Authorization: `Bearer ${token}`,
       },
     })
-      .then((res) => {
-        if (!res.ok) throw new Error("Dashboard API error");
-        return res.json();
-      })
-      .then((data) => {
-        setStats(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load statistics:", err);
-        setLoading(false);
-      });
-  }, [token, router]);
+      .then((res) => res.json())
+      .then(setRecentActivity);
+  }, [token, user]);
 
   if (!user || loading) {
     return (
@@ -104,7 +149,7 @@ export default function DashboardPage() {
       value: formatCurrency(stats?.total_sales),
       icon: ShoppingCart,
       color: "text-emerald-600",
-      subtitle: "All-time ledger balance",
+      subtitle: "Completed sales only",
     },
     {
       title: "Active Suppliers",
@@ -113,38 +158,23 @@ export default function DashboardPage() {
       color: "text-violet-600",
       subtitle: "Registered distribution channels",
     },
+    {
+      title: "Cancelled Sales",
+      value: stats?.cancelled_sales ?? 0,
+      icon: AlertTriangle,
+      color: "text-red-600",
+      subtitle: "Voided transactions",
+    },
   ];
 
   const lowStockCount = stats?.low_stock_products ?? 0;
 
-  const salesChartData = [
-    {
-      name: "Today",
-      sales: Number(stats?.today_sales ?? 0),
-    },
-    {
-      name: "Total",
-      sales: Number(stats?.total_sales ?? 0),
-    },
-  ];
-
   const inventoryChartData = [
-    {
-      name: "Products",
-      value: stats?.total_products ?? 0,
-    },
-    {
-      name: "Categories",
-      value: stats?.total_categories ?? 0,
-    },
-    {
-      name: "Suppliers",
-      value: stats?.total_suppliers ?? 0,
-    },
-    {
-      name: "Low Stock",
-      value: stats?.low_stock_products ?? 0,
-    },
+    { name: "Products", value: stats?.total_products ?? 0 },
+    { name: "Categories", value: stats?.total_categories ?? 0 },
+    { name: "Suppliers", value: stats?.total_suppliers ?? 0 },
+    { name: "Low Stock", value: stats?.low_stock_products ?? 0 },
+    { name: "Cancelled Sales", value: stats?.cancelled_sales ?? 0 },
   ];
 
   return (
@@ -173,7 +203,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {cardsData.map((card, idx) => (
           <Card
             key={idx}
@@ -204,17 +234,28 @@ export default function DashboardPage() {
         <Card className="border border-slate-200 shadow-sm bg-white">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-slate-800">
-              Sales Revenue
+              Revenue Trend Last 7 Days
             </CardTitle>
           </CardHeader>
 
           <CardContent className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={salesChartData}>
-                <XAxis dataKey="name" />
+              <LineChart data={salesTrend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(value) =>
+                    new Date(value).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  }
+                />
                 <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="sales" strokeWidth={3} />
+                <Tooltip
+                  formatter={(value) => `KES ${Number(value).toLocaleString()}`}
+                />
+                <Line type="monotone" dataKey="revenue" strokeWidth={3} dot />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -238,6 +279,27 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           </CardContent>
         </Card>
+
+        {user?.role === "admin" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Activity</CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-3">
+              {recentActivity.map((log: any) => (
+                <div key={log.id} className="border-b pb-3 last:border-0">
+                  <p className="text-sm font-semibold">{log.description}</p>
+
+                  <p className="text-xs text-slate-500">
+                    {log.user?.name || "System"} •{" "}
+                    {new Date(log.created_at).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
