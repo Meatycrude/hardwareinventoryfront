@@ -197,7 +197,7 @@ export default function DashboardPage() {
           <div className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-800 shadow-sm animate-pulse">
             <AlertTriangle className="h-4 w-4 text-rose-600" />
             <span>
-              Attention: {lowStockCount} Depleted SKUs Need Replenishment
+              Attention: {lowStockCount} Products need to be restocked  
             </span>
           </div>
         )}
